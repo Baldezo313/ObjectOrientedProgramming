@@ -1,0 +1,6 @@
+archive (1).zip
+archive (1).zip.old
+.idea
+__pycache__/
+archive/
+env/
