@@ -5,7 +5,7 @@ class Database:
         pass
 
 
-database = Database("C:/Users/balde/Desktop/Oreilli/OOP1/archive")
+database = Database("C:/Users/balde/Desktop/Oreilli/OOP1")
 
 row = {"sepal_length": "5.1", "sepal_width": "3.5",
        "patal_length": "1.4", "petal_width": "0.2",

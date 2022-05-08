@@ -801,5 +801,5 @@ class NorwegianBlueP:
 
     @silly.deleter
     def silly(self) -> None:
-        print(f"{self._name} is pushing up daisies!")
+        print(f"{self._name} is pushing up daisies !")
         del self._state

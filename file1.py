@@ -106,9 +106,9 @@ import math
 class Point:
     """
     Represents a point in two-dimensional geometric coordinates
-    >>> p_0 = Point()
-    >>> p_1 = Point(3, 4)
-    >>> p_0.calculate_distance(p_1)
+    p_0 = Point()
+    p_1 = Point(3, 4)
+    p_0.calculate_distance(p_1)
     5.0
     """
     def __init__(self, x, y):
