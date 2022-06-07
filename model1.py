@@ -1,12 +1,18 @@
+import abc
 import csv
 import datetime
 import enum
+import random
 import weakref
 import math
 from pathlib import Path
 from enum import Enum
+from dataclasses import dataclass, asdict
 from pprint import pprint
-from typing import List, Optional, Iterable, cast, Set, Iterator
+from typing import NamedTuple
+from typing import List, Optional, Iterable, cast, Set, Iterator, TypedDict, overload, Union, Tuple
+from abc import ABC, abstractmethod, abstractproperty
+import abc
 
 
 class Sample:
@@ -73,38 +79,38 @@ class Hyperparameter:
                 fail_count += 1
         self.quality = pass_count / (pass_count + fail_count)
 
-#
-# class TrainingData:
-#     """A set of traing Data and testing data with methods to load and test sample."""
-#     def __init__(self, name: str) -> None:
-#         self.name = name
-#         self.uploaded: datetime.datetime
-#         self.tested: datetime.datetime
-#         self.training: List[Sample] = []
-#         self.testing: List[Sample] = []
-#         self.tuning: List[Hyperparameter] = []
-#
-#     def load(self,
-#              raw_data_source: Iterable[dict[str, str]]) -> None:
-#         """Load and partition the raw data"""
-#         # for n, row in enumerate(raw_data_source):
-#         #     ... filter and extract subsets
-#         #     ... Create self.training and self.testing subsets
-#         self.uploaded = datetime.datetime.now(tz=datetime.timezone.utc)
-#
-#     def test(self, parameter: Hyperparameter) -> None:
-#         """Test this Hyperparameter"""
-#         parameter.test()
-#         self.tuning.append(parameter)
-#         self.tested = datetime.datetime.now(tz=datetime.timezone.utc)
-#
-#     def classify(self,
-#                  parameter: Hyperparameter,
-#                  sample: Sample) -> Sample:
-#         """Classify this Sample."""
-#         classification = parameter.classify(sample)
-#         sample.classify(classification)
-#         return sample
+
+class TrainingData:
+    """A set of traing Data and testing data with methods to load and test sample."""
+    def __init__(self, name: str) -> None:
+        self.name = name
+        self.uploaded: datetime.datetime
+        self.tested: datetime.datetime
+        self.training: List[Sample] = []
+        self.testing: List[Sample] = []
+        self.tuning: List[Hyperparameter] = []
+
+    def load(self,
+             raw_data_source: Iterable[dict[str, str]]) -> None:
+        """Load and partition the raw data"""
+        # for n, row in enumerate(raw_data_source):
+        #     ... filter and extract subsets
+        #     ... Create self.training and self.testing subsets
+        self.uploaded = datetime.datetime.now(tz=datetime.timezone.utc)
+
+    def test(self, parameter: Hyperparameter) -> None:
+        """Test this Hyperparameter"""
+        parameter.test()
+        self.tuning.append(parameter)
+        self.tested = datetime.datetime.now(tz=datetime.timezone.utc)
+
+    def classify(self,
+                 parameter: Hyperparameter,
+                 sample: Sample) -> Sample:
+        """Classify this Sample."""
+        classification = parameter.classify(sample)
+        sample.classify(classification)
+        return sample
 
 
 class KnownSample(Sample):
@@ -199,22 +205,22 @@ class InvalidSampleError(ValueError):
     """Source data file has invalid data representation"""
 
 
-# @classmethod
-# def from_dict(cls, row: dict[str, str]) -> "KnownSample":
-#     if row["species"] not in {
-#         "Iris-setosa", "Iris-versicolour", "Iris-virginica"
-#     }:
-#         raise InvalidSampleError(f"invalid species in {row!r}")
-#     try:
-#         return cls(
-#             species=row["species"],
-#             sepal_length=float(row["sepal_length"]),
-#             sepal_width=float(row["sepal_width"]),
-#             petal_length=float(row["petal_length"]),
-#             petal_width=float(row["petal_width"]),
-#         )
-#     except ValueError as ex:
-#         raise InvalidSampleError(f"invalid {row!r}")
+@classmethod
+def from_dict(cls, row: dict[str, str]) -> "KnownSample":
+    if row["species"] not in {
+        "Iris-setosa", "Iris-versicolour", "Iris-virginica"
+    }:
+        raise InvalidSampleError(f"invalid species in {row!r}")
+    try:
+        return cls(
+            species=row["species"],
+            sepal_length=float(row["sepal_length"]),
+            sepal_width=float(row["sepal_width"]),
+            petal_length=float(row["petal_length"]),
+            petal_width=float(row["petal_width"]),
+        )
+    except ValueError as ex:
+        raise InvalidSampleError(f"invalid {row!r}")
 
 
 class TrainingKnownSample(KnownSample):
@@ -406,3 +412,220 @@ class KnownSample(Sample):
     #         raise AttributeError(
     #             f"Training samples cannot be classified "
     #         )
+
+
+class SampleDict(TypedDict):
+    sepal_length: float
+    sepal_width: float
+    petal_length: float
+    petal_width: float
+
+
+class SamplePartition(List[SampleDict], abc.ABC):
+    @overload
+    def __init__(self, *, training_subset: float = 0.80) -> None:
+        super().__init__()
+
+    def __init__(
+        self,
+        iterable: Optional[Iterable[SampleDict]] = None,
+        # iterable: list[dict[str, Union[float, str]]] = None,
+        *,
+        training_subset: float = 0.80,
+    ) -> None:
+        self.training_subset = training_subset
+        if iterable:
+            super().__init__(iterable)
+        else:
+            super().__init__()
+
+    @abc.abstractproperty
+    @property
+    def training(self) -> List[TrainingKnownSample]:
+        pass
+
+    @abc.abstractproperty
+    @property
+    def testing(self) -> List[TestingKnownSample]:
+        pass
+
+
+class ShufflingSamplePartition(SamplePartition):
+    def __init__(
+        self,
+        iterable: Optional[Iterable[SampleDict]] = None,
+        # iterable: list[dict[str, Union[float, str]]] = None,
+        *,
+        training_subset: float = 0.80,
+    ) -> None:
+        super().__init__(iterable, training_subset=training_subset)
+        self.split: Optional[int] = None
+
+    def shuffle(self) -> None:
+        if not self.split:
+            random.shuffle(self)
+            self.split = int(len(self) * self.training_subset)
+
+    @property
+    def training(self) -> List[TrainingKnownSample]:
+        self.shuffle()
+        return [TrainingKnownSample(**sd) for sd in self[: self.split]]
+
+    @property
+    def testing(self) -> List[TestingKnownSample]:
+        self.shuffle()
+        return [TestingKnownSample() for sd in self[self.split:]]
+
+
+class DealingPartition(abc.ABC):
+    @abc.abstractmethod
+    def __init__(
+        self,
+        items: Optional[Iterable[SampleDict]],
+        *,
+        training_subset: Tuple[int, int] = (8, 10),
+    ) -> None:
+        ...
+
+    @abc.abstractmethod
+    def extend(self, items: Iterable[SampleDict]) -> None:
+        ...
+
+    @abc.abstractmethod
+    def append(self, items: SampleDict) -> None:
+        ...
+
+    @property
+    @abc.abstractmethod
+    def training(self) -> List[TrainingKnownSample]:
+        ...
+
+    @property
+    @abc.abstractmethod
+    def testing(self) -> List[TestingKnownSample]:
+        ...
+
+
+class CountingDealingPartition(DealingPartition):
+    def __init__(
+        self,
+        items: Optional[Iterable[SampleDict]],
+        *,
+        training_subset: Tuple[int, int] = (8, 10),
+    ) -> None:
+        self.training_subset = training_subset
+        self.counter = 0
+        self._training: List[TrainingKnownSample] = []
+        self._testing: List[TestingKnownSample] = []
+        if items:
+            self.extend(items)
+
+    def extend(self, items: Iterable[SampleDict]) -> None:
+        for item in items:
+            self.append(item)
+
+    def append(self, items: SampleDict) -> None:
+        n, d = self.training_subset
+        if self.counter % d < n:
+            self._training.append(TrainingKnownSample(**items))
+        else:
+            self._testing.append(TestingKnownSample(**items))
+        self.counter += 1
+
+    @property
+    def training(self) -> List[TrainingKnownSample]:
+        return self._training
+
+    @property
+    def testing(self) -> List[TestingKnownSample]:
+        return self._testing
+
+
+# @dataclass
+# class Samples:
+#     sepal_length: float
+#     sepal_width: float
+#     petal_length: float
+#     petal_width: float
+#
+#
+# @dataclass
+# class KnownSamples(Samples):
+#     species: str
+#
+#
+# @dataclass
+# class TestingKnownSamples(KnownSamples):
+#     classification: Optional[str] = None
+#
+#
+# @dataclass
+# class TrainingKnownSamples(KnownSamples):
+#     """Note: no classification instance variable available"""
+#     pass
+#
+#
+# @dataclass
+# class Hyperparameters:
+#     """A specific tuning parameter set with k and a distance algorithm"""
+#     k: int
+#     algorithm: Distance
+#     data: weakref.ReferenceType["TrainingKnownSamples"]
+#
+#     def classify(self, sample: Samples) -> str:
+#         """The K-NN algorithm"""
+#         ...
+
+
+# @dataclass(frozen=True)
+# class Samples:
+#     sepal_length: float
+#     sepal_width: float
+#     petal_length: float
+#     petal_width: float
+#
+#
+# @dataclass(frozen=True)
+# class KnownSamples(Samples):
+#     species: str
+#
+#
+# @dataclass(frozen=True)
+# class TestingKnownSamples:
+#     sample: KnownSamples
+#     classification: Optional[str] = None
+#
+#
+# @dataclass(frozen=True)
+# class TrainingKnownSamples:
+#     """Cannot be classified."""
+#     sample: KnownSamples
+
+class Samples(NamedTuple):
+    sepal_length: float
+    sepal_width: float
+    petal_length: float
+    petal_width: float
+
+
+class KnownSamples(NamedTuple):
+    sample: Samples
+    species: str
+
+
+class TestingKnownSamples:
+    def __init__(
+        self, sample: KnownSamples, classification: Optional[str] = None
+    ) -> None:
+        self.sample = sample
+        self.classification = classification
+
+    def __repr__(self) -> str:
+        return (
+            f"{self.__class__.__name__}(sample={self.sample!r},"
+            f"classification={self.classification!r})"
+        )
+
+
+class TrainingKnownSamples(NamedTuple):
+    sample: KnownSamples
