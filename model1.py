@@ -1,4 +1,5 @@
 import abc
+import collections
 import csv
 import datetime
 import enum
@@ -9,7 +10,7 @@ from pathlib import Path
 from enum import Enum
 from dataclasses import dataclass, asdict
 from pprint import pprint
-from typing import NamedTuple
+from typing import NamedTuple, Counter
 from typing import List, Optional, Iterable, cast, Set, Iterator, TypedDict, overload, Union, Tuple
 from abc import ABC, abstractmethod, abstractproperty
 import abc
@@ -65,7 +66,7 @@ class Hyperparameter:
         self.data: weakref.ReferenceType["TrainingData"] = weakref.ref(training)
         self.quality: float
 
-    def test(self) -> None:
+    def test(self) -> "Hyperparameter":
         """Run the entire test suite."""
         training_data: Optional["TrainingData"] = self.data()
         if not training_data:
@@ -78,6 +79,7 @@ class Hyperparameter:
             else:
                 fail_count += 1
         self.quality = pass_count / (pass_count + fail_count)
+        return self
 
 
 class TrainingData:
@@ -541,65 +543,66 @@ class CountingDealingPartition(DealingPartition):
         return self._testing
 
 
-# @dataclass
-# class Samples:
-#     sepal_length: float
-#     sepal_width: float
-#     petal_length: float
-#     petal_width: float
-#
-#
-# @dataclass
-# class KnownSamples(Samples):
-#     species: str
-#
-#
-# @dataclass
-# class TestingKnownSamples(KnownSamples):
-#     classification: Optional[str] = None
-#
-#
-# @dataclass
-# class TrainingKnownSamples(KnownSamples):
-#     """Note: no classification instance variable available"""
-#     pass
-#
-#
-# @dataclass
-# class Hyperparameters:
-#     """A specific tuning parameter set with k and a distance algorithm"""
-#     k: int
-#     algorithm: Distance
-#     data: weakref.ReferenceType["TrainingKnownSamples"]
-#
-#     def classify(self, sample: Samples) -> str:
-#         """The K-NN algorithm"""
-#         ...
+@dataclass
+class Samples:
+    sepal_length: float
+    sepal_width: float
+    petal_length: float
+    petal_width: float
 
 
-# @dataclass(frozen=True)
-# class Samples:
-#     sepal_length: float
-#     sepal_width: float
-#     petal_length: float
-#     petal_width: float
-#
-#
-# @dataclass(frozen=True)
-# class KnownSamples(Samples):
-#     species: str
-#
-#
-# @dataclass(frozen=True)
-# class TestingKnownSamples:
-#     sample: KnownSamples
-#     classification: Optional[str] = None
-#
-#
-# @dataclass(frozen=True)
-# class TrainingKnownSamples:
-#     """Cannot be classified."""
-#     sample: KnownSamples
+@dataclass
+class KnownSamples(Samples):
+    species: str
+
+
+@dataclass
+class TestingKnownSamples(KnownSamples):
+    classification: Optional[str] = None
+
+
+@dataclass
+class TrainingKnownSamples(KnownSamples):
+    """Note: no classification instance variable available"""
+    pass
+
+
+@dataclass
+class Hyperparameters:
+    """A specific tuning parameter set with k and a distance algorithm"""
+    k: int
+    algorithm: Distance
+    data: weakref.ReferenceType["TrainingKnownSamples"]
+
+    def classify(self, sample: Samples) -> str:
+        """The K-NN algorithm"""
+        ...
+
+
+@dataclass(frozen=True)
+class Samples:
+    sepal_length: float
+    sepal_width: float
+    petal_length: float
+    petal_width: float
+
+
+@dataclass(frozen=True)
+class KnownSamples(Samples):
+    species: str
+
+
+@dataclass(frozen=True)
+class TestingKnownSamples:
+    sample: KnownSamples
+    classification: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class TrainingKnownSamples:
+    """Cannot be classified."""
+    sample: KnownSamples
+
 
 class Samples(NamedTuple):
     sepal_length: float
@@ -629,3 +632,39 @@ class TestingKnownSamples:
 
 class TrainingKnownSamples(NamedTuple):
     sample: KnownSamples
+
+
+class UnknownSample:
+    pass
+
+
+class Hyperparameterbis:
+    def __init__(
+            self,
+            k: int,
+            algorithm: "Distance",
+            training: "TrainingData"
+    ) -> None:
+        self.k = k
+        self.algorithm = algorithm
+        self.data: weakref.ReferenceType["TrainingData"] = \
+            weakref.ref(training)
+        self.quality: float
+
+    def classify(
+            self,
+            sample: Union[UnknownSample, TestingKnownSample]
+    ) -> str:
+        """The K-NN algorithm"""
+        training_data = self.data()
+        if not training_data:
+            raise RuntimeError("No TrainingData object")
+        distances: list[tuple[float, TrainingKnownSample]] = sorted(
+            (self.algorithm.distance(sample, known), known)
+            for known in training_data.training
+        )
+        k_nearest = (known.species for d, known in distances[: self.k])
+        frequency: Counter[str] = collections.Counter(k_nearest)
+        best_fit, *others = frequency.most_common()
+        species, votes = best_fit
+        return species
